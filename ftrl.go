@@ -4,6 +4,21 @@ import (
 	"math"
 )
 
+// 是否为测试模式
+// 测试模式下：训练模型时会记录相关的测试信息
+var debug bool
+var debugResults []*PredictResult
+
+// 预测结果
+// 用于模型评估
+type PredictResult struct {
+	// 真实的观测值
+	RealY float64
+
+	// 预测的观测值
+	PredictY float64
+}
+
 type FTRL struct {
 	// 输入的初始化参数
 	// alpha: Learning rate's proportionality constant.
@@ -18,7 +33,16 @@ type FTRL struct {
 	alphaReciprocal float64
 
 	// 特征总数
-	max_feature int
+	maxFeature int
+}
+
+// 一个观察实例
+type Instance struct {
+	// 非0特征数组
+	Features []*Feature
+
+	// 结果变量
+	Y float64
 }
 
 // 一个特征
@@ -59,9 +83,79 @@ func New(alpha, beta, lambda1, lambda2 float64) *FTRL {
 	}
 }
 
-// Load 加载模型
-func (f *FTRL) Load() {
+// 修改测试状态
+func SetDebug(isDebug bool) {
+	debug = isDebug
+}
 
+func GetDebugResults() []*PredictResult {
+	return debugResults
+}
+
+// Train 训练模型
+// instances: 观测数组
+// Receive feature vector xt and let features = {i | xi != 0}
+func (f *FTRL) Train(maxFeature int, instances []*Instance) {
+	// 初始化模型参数
+	f.UpdateMaxFeature(maxFeature)
+
+	for _, instance := range instances {
+		// 更新权重
+		for i := 0; i < f.maxFeature; i++ {
+			if math.Abs(z[i]) <= f.l1 {
+				w[i] = 0
+			} else {
+				w[i] = -1 / (f.beta - math.Sqrt(n[i])/f.alpha + f.l2) * (z[i] - sgn(z[i])*f.l1)
+			}
+		}
+
+		// 预测
+		pt := f.Predict(instance.Features)
+
+		// 更新模型参数
+		f.updateParams(instance.Features, pt, instance.Y)
+
+		if debug {
+			result := &PredictResult{
+				RealY:    instance.Y,
+				PredictY: pt,
+			}
+			debugResults = append(debugResults, result)
+		}
+	}
+}
+
+// UpdateMaxFeature 初始化最大特征数
+func (f *FTRL) UpdateMaxFeature(maxFeature int) {
+	if maxFeature > f.maxFeature {
+		// 初始化z和n数组
+		// (∀ i ∈ {1, . . . , d}), initialize zi = 0 and ni = 0
+		for i := 0; i < maxFeature-f.maxFeature; i++ {
+			z = append(z, 0)
+			n = append(n, 0)
+			g = append(g, 0)
+			w = append(w, 0)
+			sigma = append(sigma, 0)
+		}
+
+		f.maxFeature = maxFeature
+	}
+}
+
+// Test 测试模型
+func (f *FTRL) Test(instances []*Instance) []*PredictResult {
+	for _, instance := range instances {
+		// 预测
+		p := f.Predict(instance.Features)
+
+		result := &PredictResult{
+			RealY:    instance.Y,
+			PredictY: p,
+		}
+		debugResults = append(debugResults, result)
+	}
+
+	return debugResults
 }
 
 // Save 存储模型
@@ -69,50 +163,18 @@ func (f *FTRL) Save() {
 
 }
 
-// 训练模型
-func (f *FTRL) Train(dataGen *DataGen) {
-	// 初始化模型参数
-	f.initMaxFeature(dataGen.max_feature)
-
-	// features: 不为0的特征数组
-	// Receive feature vector xt and let features = {i | xi != 0}
-	for features, yt := range dataGen.GetRow() {
-		f.Update(features, yt)
-	}
-}
-
-// Update 更新模型
-// features: 观测的特征数组
-// yt: 实际值
-func (f *FTRL) Update(features []Feature, yt float64) {
-	// 更新权重
-	for i := 0; i < f.max_feature; i++ {
-		if math.Abs(z[i]) <= f.l1 {
-			w[i] = 0
-		} else {
-			w[i] = -1 / (f.beta - math.Sqrt(n[i])/f.alpha + f.l2) * (z[i] - math.Signbit(z[i])*l1)
-		}
-	}
-
-	// 预测
-	// p_t = σ(x_t · w)
-	// σ(a) = 1/(1 + exp(−a))
-	pt = sigmaFunc(listMult(features, w))
-
-	// 更新模型参数
-	f.updateParams(features, pt, yt)
-}
-
-// 更新模型
-func (f *FTRL) Test() {
+// Load 加载模型
+func (f *FTRL) Load() {
 
 }
 
 // Predict 预测
 // features: 非0特征
-func (f *FTRL) Predict(features []Feature) {
-	var val float64 = 0
-	for ft := range features {
+// p_t = σ(x_t · w)
+// σ(a) = 1/(1 + exp(−a))
+func (f *FTRL) Predict(features []*Feature) float64 {
+	var val float64
+	for _, ft := range features {
 		val += ft.Val * w[ft.Index]
 	}
 
@@ -125,10 +187,13 @@ func (f *FTRL) Predict(features []Feature) {
 // features: 观测的特征数组
 // pt: 预测的值
 // yt: 实际值
-func (f *FTRL) updateParams(features []Feature, pt, yt float64) {
-	for ft := range features {
-		i := ft.Index
-		xi := ft.Val
+func (f *FTRL) updateParams(features []*Feature, pt, yt float64) {
+	var giSquare, xi float64
+	var i int
+
+	for _, ft := range features {
+		i = ft.Index
+		xi = ft.Val
 
 		// g_i = (p_t − y_t ) * x_i  #gradient of loss w.r.t. w_i
 		g[i] = (pt - yt) * xi
@@ -143,35 +208,4 @@ func (f *FTRL) updateParams(features []Feature, pt, yt float64) {
 		// n_i ← n_i + g_i ^ 2
 		n[i] = n[i] + giSquare
 	}
-}
-
-// 初始化最大特征数
-func (f *FTRL) initMaxFeature(max_feature) {
-	if max_feature > f.max_feature {
-		// 初始化z和n数组
-		// (∀ i ∈ {1, . . . , d}), initialize zi = 0 and ni = 0
-		for i := 0; i < max_feature-f.max_feature; i++ {
-			z = append(z, 0)
-			n = append(n, 0)
-			g = append(g, 0)
-			w = append(w, 0)
-			sigma = append(sigma, 0)
-		}
-
-		f.max_feature = max_feature
-	}
-}
-
-// 初始化权重参数
-func (f *FTRL) initWeightParams(max_feature) {
-	if max_feature > f.max_feature {
-		for i := 0; i < max_feature-f.max_feature; i++ {
-			w = append(w, 0)
-		}
-	}
-}
-
-// σ(a) = 1/(1 + exp(−a))
-func sigmaFunc(val float64) float64 {
-	return 1 / (1 + math.Exp(-val))
 }
