@@ -25,12 +25,9 @@ type FTRL struct {
 	// beta: Learning rate's parameter.
 	alpha, beta float64
 
-	// L1: regularization constant
-	// L2: regularization constant
+	// L1范数：使特征稀疏化。值越大，越稀疏
+	// L2范数：避免过拟合。值越大，泛化越好，越稀疏
 	l1, l2 float64
-
-	// alpha参数的倒数
-	alphaReciprocal float64
 
 	// 特征总数
 	maxFeature int
@@ -63,23 +60,17 @@ var w []float64
 // training to take place, albeit a little bit ugly.
 var z, n []float64
 
-// 运算过程需要的参数
-var g, sigma []float64
-
 // Input: parameters α, β, λ1 , λ2
 // alpha:
 // beta:
-// lambda1:
-// lambda2:
-func New(alpha, beta, lambda1, lambda2 float64) *FTRL {
+// l1:
+// l2:
+func New(alpha, beta, l1, l2 float64) *FTRL {
 	return &FTRL{
 		alpha: alpha,
 		beta:  beta,
-		l1:    lambda1,
-		l2:    lambda2,
-
-		// alpha参数的倒数
-		alphaReciprocal: 1 / alpha,
+		l1:    l1,
+		l2:    l2,
 	}
 }
 
@@ -99,28 +90,43 @@ func (f *FTRL) Train(maxFeature int, instances []*Instance) {
 	// 初始化模型参数
 	f.UpdateMaxFeature(maxFeature)
 
+	var pt float64
+	index := 0
 	for _, instance := range instances {
 		// 更新权重
-		for i := 0; i < f.maxFeature; i++ {
+		/*for i := 0; i < f.maxFeature; i++ {
+			if math.Abs(z[i]) < f.l1 {
+				w[i] = 0
+			} else {
+				w[i] = -(z[i] - sgn(z[i])*f.l1) / ((f.beta - math.Sqrt(n[i])/f.alpha) + f.l2)
+			}
+		}*/
+
+		for _, feature := range instance.Features {
+			i := feature.Index
 			if math.Abs(z[i]) <= f.l1 {
 				w[i] = 0
 			} else {
-				w[i] = -1 / (f.beta - math.Sqrt(n[i])/f.alpha + f.l2) * (z[i] - sgn(z[i])*f.l1)
+				// 非0特征
+				w[i] = -(z[i] - sgn(z[i])*f.l1) / ((f.beta - math.Sqrt(n[i])/f.alpha) + f.l2)
 			}
 		}
 
 		// 预测
-		pt := f.Predict(instance.Features)
+		pt = f.Predict(instance.Features)
 
 		// 更新模型参数
 		f.updateParams(instance.Features, pt, instance.Y)
 
 		if debug {
+			// 记录测试数据
 			result := &PredictResult{
 				RealY:    instance.Y,
 				PredictY: pt,
 			}
 			debugResults = append(debugResults, result)
+
+			index += 1
 		}
 	}
 }
@@ -133,9 +139,7 @@ func (f *FTRL) UpdateMaxFeature(maxFeature int) {
 		for i := 0; i < maxFeature-f.maxFeature; i++ {
 			z = append(z, 0)
 			n = append(n, 0)
-			g = append(g, 0)
 			w = append(w, 0)
-			sigma = append(sigma, 0)
 		}
 
 		f.maxFeature = maxFeature
@@ -144,9 +148,10 @@ func (f *FTRL) UpdateMaxFeature(maxFeature int) {
 
 // Test 测试模型
 func (f *FTRL) Test(instances []*Instance) []*PredictResult {
+	var p float64
 	for _, instance := range instances {
 		// 预测
-		p := f.Predict(instance.Features)
+		p = f.Predict(instance.Features)
 
 		result := &PredictResult{
 			RealY:    instance.Y,
@@ -188,7 +193,7 @@ func (f *FTRL) Predict(features []*Feature) float64 {
 // pt: 预测的值
 // yt: 实际值
 func (f *FTRL) updateParams(features []*Feature, pt, yt float64) {
-	var giSquare, xi float64
+	var g, s, gSquare, xi float64
 	var i int
 
 	for _, ft := range features {
@@ -196,16 +201,16 @@ func (f *FTRL) updateParams(features []*Feature, pt, yt float64) {
 		xi = ft.Val
 
 		// g_i = (p_t − y_t ) * x_i  #gradient of loss w.r.t. w_i
-		g[i] = (pt - yt) * xi
-		giSquare = g[i] * g[i]
+		g = (pt - yt) * xi
+		gSquare = g * g
 
 		// σ_i = 1/α * (sqrt(n_i + g_i^2) − sqrt(n_i))  #equals 1/η_t,i − 1/η_t−1,i
-		sigma[i] = f.alphaReciprocal * (math.Sqrt(n[i]+giSquare) - math.Sqrt(n[i]))
+		s = (math.Sqrt(n[i]+gSquare) - math.Sqrt(n[i])) / f.alpha
 
 		// z_i ← z_i + g_i − σ_i * w_t,i
-		z[i] = z[i] + g[i] - sigma[i]*w[i]
+		z[i] += g - s*w[i]
 
 		// n_i ← n_i + g_i ^ 2
-		n[i] = n[i] + giSquare
+		n[i] += gSquare
 	}
 }
