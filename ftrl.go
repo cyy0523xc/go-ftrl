@@ -59,6 +59,16 @@ func New(alpha, beta, lambda1, lambda2 float64) *FTRL {
 	}
 }
 
+// Load 加载模型
+func (f *FTRL) Load() {
+
+}
+
+// Save 存储模型
+func (f *FTRL) Save() {
+
+}
+
 // 训练模型
 func (f *FTRL) Train(dataGen *DataGen) {
 	// 初始化模型参数
@@ -93,6 +103,24 @@ func (f *FTRL) Update(features []Feature, yt float64) {
 	f.updateParams(features, pt, yt)
 }
 
+// 更新模型
+func (f *FTRL) Test() {
+
+}
+
+// Predict 预测
+// features: 非0特征
+func (f *FTRL) Predict(features []Feature) {
+	var val float64 = 0
+	for ft := range features {
+		val += ft.Val * w[ft.Index]
+	}
+
+	return sigmaFunc(val)
+}
+
+// ***************** Private ******************************
+
 // updateParams 更新模型参数
 // features: 观测的特征数组
 // pt: 预测的值
@@ -117,21 +145,6 @@ func (f *FTRL) updateParams(features []Feature, pt, yt float64) {
 	}
 }
 
-// 更新模型
-func (f *FTRL) Test() {
-
-}
-
-// 更新模型
-func (f *FTRL) Predict(features []Feature) {
-	var val float64 = 0
-	for ft := range features {
-		val += ft.Val * w[ft.Index]
-	}
-
-	return sigmaFunc(val)
-}
-
 // 初始化最大特征数
 func (f *FTRL) initMaxFeature(max_feature) {
 	if max_feature > f.max_feature {
@@ -146,6 +159,15 @@ func (f *FTRL) initMaxFeature(max_feature) {
 		}
 
 		f.max_feature = max_feature
+	}
+}
+
+// 初始化权重参数
+func (f *FTRL) initWeightParams(max_feature) {
+	if max_feature > f.max_feature {
+		for i := 0; i < max_feature-f.max_feature; i++ {
+			w = append(w, 0)
+		}
 	}
 }
 
