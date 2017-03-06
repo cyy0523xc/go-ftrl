@@ -7,9 +7,9 @@ import (
 
 func TestTrain(t *testing.T) {
 	var alpha, beta, l1, l2 float64
-	alpha = 0.3
+	alpha = 0.1
 	beta = 4000
-	l1 = 10
+	l1 = 1
 	l2 = 1
 
 	SetDebug(true)
@@ -34,11 +34,17 @@ func TestTrain(t *testing.T) {
 			fmt.Printf("Y: %d, P: %d\n", int(results[i].RealY), int(results[i].PredictY))
 			if i == 300001 {
 				// 输出权重
+				fmt.Println("wwwwwwwwwwwwww")
 				fmt.Println(w)
+				fmt.Println("nnnnnnnnnnnnnn")
+				fmt.Println(n)
+				fmt.Println("zzzzzzzzzzzzzz")
+				fmt.Println(z)
 			}
 		}
 	}
 
 	fmt.Printf("totalY: %d, avgY: %f\n", totalY, sumY/float64(totalY))
 	fmt.Printf("totalN: %d, avgN: %f\n", totalN, sumN/float64(totalN))
+	fmt.Printf("Rate: %f\n", float64(totalY)/float64(totalY+totalN))
 }
